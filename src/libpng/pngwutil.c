@@ -203,8 +203,6 @@ png_text_compress(png_structp png_ptr,
         png_charp text, png_size_t text_len, int compression,
         compression_state *comp)
 {
-   int ret;
-
    comp->num_output_ptr = 0;
    comp->max_output_ptr = 0;
    comp->output_ptr = NULL;
@@ -245,135 +243,28 @@ png_text_compress(png_structp png_ptr,
     * wouldn't cause a failure, just a slowdown due to swapping).
     */
 
-   /* Set up the compression buffers */
-   /* TODO: the following cast hides a potential overflow problem. */
-   png_ptr->zstream.avail_in = (uInt)text_len;
-   /* NOTE: assume zlib doesn't overwrite the input */
-   png_ptr->zstream.next_in = (Bytef *)text;
-   png_ptr->zstream.avail_out = png_ptr->zbuf_size;
-   png_ptr->zstream.next_out = png_ptr->zbuf;
-
-   /* This is the same compression loop as in png_write_row() */
-   do
    {
-      /* Compress the data */
-      ret = deflate(&png_ptr->zstream, Z_NO_FLUSH);
-      if (ret != Z_OK)
+      unsigned char *out = 0;
+      size_t outsize = 0;
+      ZlibCompress(&png_ptr->zopfli_options, text, text_len, &out, &outsize);
+      text_len = outsize;
+
+      if (png_ptr->zbuf_size < outsize)
       {
-         /* Error */
-         if (png_ptr->zstream.msg != NULL)
-            png_error(png_ptr, png_ptr->zstream.msg);
-         else
-            png_error(png_ptr, "zlib error");
-      }
-      /* Check to see if we need more room */
-      if (!(png_ptr->zstream.avail_out))
-      {
-         /* Make sure the output array has room */
-         if (comp->num_output_ptr >= comp->max_output_ptr)
+         int slot = outsize / png_ptr->zbuf_size;
+         comp->output_ptr = (png_charpp)png_malloc(png_ptr, (png_alloc_size_t)(slot * png_sizeof(png_charp)));
+         do
          {
-            int old_max;
-
-            old_max = comp->max_output_ptr;
-            comp->max_output_ptr = comp->num_output_ptr + 4;
-            if (comp->output_ptr != NULL)
-            {
-               png_charpp old_ptr;
-
-               old_ptr = comp->output_ptr;
-               comp->output_ptr = (png_charpp)png_malloc(png_ptr,
-                  (png_alloc_size_t)
-                  (comp->max_output_ptr * png_sizeof(png_charpp)));
-               png_memcpy(comp->output_ptr, old_ptr, old_max
-                  * png_sizeof(png_charp));
-               png_free(png_ptr, old_ptr);
-            }
-            else
-               comp->output_ptr = (png_charpp)png_malloc(png_ptr,
-                  (png_alloc_size_t)
-                  (comp->max_output_ptr * png_sizeof(png_charp)));
-         }
-
-         /* Save the data */
-         comp->output_ptr[comp->num_output_ptr] =
-            (png_charp)png_malloc(png_ptr,
-            (png_alloc_size_t)png_ptr->zbuf_size);
-         png_memcpy(comp->output_ptr[comp->num_output_ptr], png_ptr->zbuf,
-            png_ptr->zbuf_size);
-         comp->num_output_ptr++;
-
-         /* and reset the buffer */
-         png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-         png_ptr->zstream.next_out = png_ptr->zbuf;
+            comp->output_ptr[comp->num_output_ptr] = (png_charp)png_malloc(png_ptr, (png_alloc_size_t)png_ptr->zbuf_size);
+            png_memcpy(comp->output_ptr[comp->num_output_ptr], out + comp->num_output_ptr * png_ptr->zbuf_size, png_ptr->zbuf_size);
+            outsize -= png_ptr->zbuf_size;
+         } while (++comp->num_output_ptr < slot);
       }
-   /* Continue until we don't have any more to compress */
-   } while (png_ptr->zstream.avail_in);
-
-   /* Finish the compression */
-   do
-   {
-      /* Tell zlib we are finished */
-      ret = deflate(&png_ptr->zstream, Z_FINISH);
-
-      if (ret == Z_OK)
-      {
-         /* Check to see if we need more room */
-         if (!(png_ptr->zstream.avail_out))
-         {
-            /* Check to make sure our output array has room */
-            if (comp->num_output_ptr >= comp->max_output_ptr)
-            {
-               int old_max;
-
-               old_max = comp->max_output_ptr;
-               comp->max_output_ptr = comp->num_output_ptr + 4;
-               if (comp->output_ptr != NULL)
-               {
-                  png_charpp old_ptr;
-
-                  old_ptr = comp->output_ptr;
-                  /* This could be optimized to realloc() */
-                  comp->output_ptr = (png_charpp)png_malloc(png_ptr,
-                     (png_alloc_size_t)(comp->max_output_ptr *
-                     png_sizeof(png_charp)));
-                  png_memcpy(comp->output_ptr, old_ptr,
-                     old_max * png_sizeof(png_charp));
-                  png_free(png_ptr, old_ptr);
-               }
-               else
-                  comp->output_ptr = (png_charpp)png_malloc(png_ptr,
-                     (png_alloc_size_t)(comp->max_output_ptr *
-                     png_sizeof(png_charp)));
-            }
-
-            /* Save the data */
-            comp->output_ptr[comp->num_output_ptr] =
-               (png_charp)png_malloc(png_ptr,
-               (png_alloc_size_t)png_ptr->zbuf_size);
-            png_memcpy(comp->output_ptr[comp->num_output_ptr], png_ptr->zbuf,
-               png_ptr->zbuf_size);
-            comp->num_output_ptr++;
-
-            /* and reset the buffer pointers */
-            png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-            png_ptr->zstream.next_out = png_ptr->zbuf;
-         }
-      }
-      else if (ret != Z_STREAM_END)
-      {
-         /* We got an error */
-         if (png_ptr->zstream.msg != NULL)
-            png_error(png_ptr, png_ptr->zstream.msg);
-         else
-            png_error(png_ptr, "zlib error");
-      }
-   } while (ret != Z_STREAM_END);
-
-   /* Text length is number of buffers plus last buffer */
-   text_len = png_ptr->zbuf_size * comp->num_output_ptr;
-   if (png_ptr->zstream.avail_out < png_ptr->zbuf_size)
-      text_len += png_ptr->zbuf_size - (png_size_t)png_ptr->zstream.avail_out;
-
+      if (0 < outsize)
+            png_memcpy(png_ptr->zbuf, out + comp->num_output_ptr * png_ptr->zbuf_size, outsize);
+      free(out);
+      png_ptr->zstream.avail_out = png_ptr->zbuf_size - outsize;
+   }
    return((int)text_len);
 }
 
@@ -404,10 +295,6 @@ png_write_compressed_data_out(png_structp png_ptr, compression_state *comp)
    if (png_ptr->zstream.avail_out < (png_uint_32)png_ptr->zbuf_size)
       png_write_chunk_data(png_ptr, png_ptr->zbuf,
          (png_size_t)(png_ptr->zbuf_size - png_ptr->zstream.avail_out));
-
-   /* Reset zlib for another zTXt/iTXt or image data */
-   deflateReset(&png_ptr->zstream);
-   png_ptr->zstream.data_type = Z_BINARY;
 }
 #endif
 
@@ -421,7 +308,6 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
    int interlace_type)
 {
    PNG_IHDR;
-   int ret;
 
    png_byte buf[13]; /* Buffer to store the IHDR info */
 
@@ -541,10 +427,7 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
    /* Write the chunk */
    png_write_chunk(png_ptr, (png_bytep)png_IHDR, buf, (png_size_t)13);
 
-   /* Initialize zlib with PNG info */
-   png_ptr->zstream.zalloc = png_zalloc;
-   png_ptr->zstream.zfree = png_zfree;
-   png_ptr->zstream.opaque = (voidpf)png_ptr;
+   /* Initialize zlib and zopfli with PNG info */
    if (!(png_ptr->do_filter))
    {
       if (png_ptr->color_type == PNG_COLOR_TYPE_PALETTE ||
@@ -553,39 +436,23 @@ png_write_IHDR(png_structp png_ptr, png_uint_32 width, png_uint_32 height,
       else
          png_ptr->do_filter = PNG_ALL_FILTERS;
    }
-   if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_STRATEGY))
-   {
-      if (png_ptr->do_filter != PNG_FILTER_NONE)
-         png_ptr->zlib_strategy = Z_FILTERED;
-      else
-         png_ptr->zlib_strategy = Z_DEFAULT_STRATEGY;
-   }
-   if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_LEVEL))
-      png_ptr->zlib_level = Z_DEFAULT_COMPRESSION;
+   /* zlib_mem_level and zlib_window_bits are used in png_malloc_default. */
    if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_MEM_LEVEL))
       png_ptr->zlib_mem_level = 8;
    if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_WINDOW_BITS))
       png_ptr->zlib_window_bits = 15;
-   if (!(png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_METHOD))
-      png_ptr->zlib_method = 8;
-   ret = deflateInit2(&png_ptr->zstream, png_ptr->zlib_level,
-         png_ptr->zlib_method, png_ptr->zlib_window_bits,
-         png_ptr->zlib_mem_level, png_ptr->zlib_strategy);
-   if (ret != Z_OK)
-   {
-      if (ret == Z_VERSION_ERROR) png_error(png_ptr,
-          "zlib failed to initialize compressor -- version error");
-      if (ret == Z_STREAM_ERROR) png_error(png_ptr,
-           "zlib failed to initialize compressor -- stream error");
-      if (ret == Z_MEM_ERROR) png_error(png_ptr,
-           "zlib failed to initialize compressor -- mem error");
-      png_error(png_ptr, "zlib failed to initialize compressor");
-   }
-   png_ptr->zstream.next_out = png_ptr->zbuf;
+
+   InitOptions(&png_ptr->zopfli_options);
+   /* png_ptr->zopfli_options.verbose = default; */
+   if (png_ptr->flags & PNG_FLAG_ZLIB_CUSTOM_LEVEL)
+      png_ptr->zopfli_options.numiterations = png_ptr->zlib_level;
+   /* png_ptr->zopfli_options.blocksplitting = default; */
+   /* png_ptr->zopfli_options.blocksplittinglast = default; */
+   /* png_ptr->zopfli_options.blocksplittingmax = default; */
+   png_ptr->zopfli_buf = 0;
+   png_ptr->zopfli_len = 0;
+
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-   /* libpng is not interested in zstream.data_type */
-   /* Set it to a predefined value, to avoid its evaluation inside zlib */
-   png_ptr->zstream.data_type = Z_BINARY;
 
    png_ptr->mode = PNG_HAVE_IHDR;
 }
@@ -1827,7 +1694,6 @@ png_write_start_row(png_structp png_ptr)
       png_ptr->usr_width = png_ptr->width;
    }
    png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-   png_ptr->zstream.next_out = png_ptr->zbuf;
 }
 
 /* Internal use only.  Called when finished processing a row of data. */
@@ -1849,8 +1715,6 @@ png_write_finish_row(png_structp png_ptr)
    /* Offset to next interlace block in the y direction */
    int png_pass_yinc[7] = {8, 8, 8, 4, 4, 2, 2};
 #endif
-
-   int ret;
 
    png_debug(1, "in png_write_finish_row");
 
@@ -1906,39 +1770,17 @@ png_write_finish_row(png_structp png_ptr)
 
    /* If we get here, we've just written the last row, so we need
       to flush the compressor */
-   do
+   if (png_ptr->zopfli_buf != 0)
    {
-      /* Tell the compressor we are done */
-      ret = deflate(&png_ptr->zstream, Z_FINISH);
-      /* Check for an error */
-      if (ret == Z_OK)
-      {
-         /* Check to see if we need more room */
-         if (!(png_ptr->zstream.avail_out))
-         {
-            png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size);
-            png_ptr->zstream.next_out = png_ptr->zbuf;
-            png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-         }
-      }
-      else if (ret != Z_STREAM_END)
-      {
-         if (png_ptr->zstream.msg != NULL)
-            png_error(png_ptr, png_ptr->zstream.msg);
-         else
-            png_error(png_ptr, "zlib error");
-      }
-   } while (ret != Z_STREAM_END);
-
-   /* Write any extra space */
-   if (png_ptr->zstream.avail_out < png_ptr->zbuf_size)
-   {
-      png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size -
-         png_ptr->zstream.avail_out);
+      unsigned char *out = 0;
+      size_t outsize = 0;
+      ZlibCompress(&png_ptr->zopfli_options, png_ptr->zopfli_buf, png_ptr->zopfli_len, &out, &outsize);
+      png_free(png_ptr, png_ptr->zopfli_buf);
+      png_ptr->zopfli_buf = 0;
+      png_ptr->zopfli_len = 0;
+      png_write_IDAT(png_ptr, out, outsize);
+      free(out);
    }
-
-   deflateReset(&png_ptr->zstream);
-   png_ptr->zstream.data_type = Z_BINARY;
 }
 
 #ifdef PNG_WRITE_INTERLACING_SUPPORTED
@@ -2749,36 +2591,22 @@ png_write_filtered_row(png_structp png_ptr, png_bytep filtered_row)
    png_debug(1, "in png_write_filtered_row");
 
    png_debug1(2, "filter = %d", filtered_row[0]);
-   /* Set up the zlib input buffer */
 
-   png_ptr->zstream.next_in = filtered_row;
-   png_ptr->zstream.avail_in = (uInt)png_ptr->row_info.rowbytes + 1;
-   /* Repeat until we have compressed all the data */
-   do
+   if (png_ptr->zopfli_buf == 0)
    {
-      int ret; /* Return of zlib */
-
-      /* Compress the data */
-      ret = deflate(&png_ptr->zstream, Z_NO_FLUSH);
-      /* Check for compression errors */
-      if (ret != Z_OK)
-      {
-         if (png_ptr->zstream.msg != NULL)
-            png_error(png_ptr, png_ptr->zstream.msg);
-         else
-            png_error(png_ptr, "zlib error");
-      }
-
-      /* See if it is time to write another IDAT */
-      if (!(png_ptr->zstream.avail_out))
-      {
-         /* Write the IDAT and reset the zlib output buffer */
-         png_write_IDAT(png_ptr, png_ptr->zbuf, png_ptr->zbuf_size);
-         png_ptr->zstream.next_out = png_ptr->zbuf;
-         png_ptr->zstream.avail_out = (uInt)png_ptr->zbuf_size;
-      }
-   /* Repeat until all data has been compressed */
-   } while (png_ptr->zstream.avail_in);
+      png_ptr->zopfli_buf = (unsigned char *)png_malloc(png_ptr, png_ptr->row_info.rowbytes + 1);
+      png_memcpy(png_ptr->zopfli_buf, filtered_row, png_ptr->row_info.rowbytes + 1);
+      png_ptr->zopfli_len = png_ptr->row_info.rowbytes + 1;
+   }
+   else
+   {
+      unsigned char *old = png_ptr->zopfli_buf;
+      png_ptr->zopfli_buf = (unsigned char *)png_malloc(png_ptr, png_ptr->zopfli_len + png_ptr->row_info.rowbytes + 1);
+      png_memcpy(png_ptr->zopfli_buf, old, png_ptr->zopfli_len);
+      png_free(png_ptr, old);
+      png_memcpy(png_ptr->zopfli_buf + png_ptr->zopfli_len, filtered_row, png_ptr->row_info.rowbytes + 1);
+      png_ptr->zopfli_len += png_ptr->row_info.rowbytes + 1;
+   }
 
    /* Swap the current and previous rows */
    if (png_ptr->prev_row != NULL)

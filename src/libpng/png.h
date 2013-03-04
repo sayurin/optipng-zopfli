@@ -420,6 +420,7 @@
 #ifndef PNG_VERSION_INFO_ONLY
 /* Include the compression library's header */
 #include "zlib.h"
+#include "zlib_container.h"
 #endif
 
 /* Include all user configurable info, including optional assembler routines */
@@ -1179,6 +1180,9 @@ struct png_struct_def
                                                level */
    int zlib_strategy PNG_DEPSTRUCT;         /* holds zlib compression
                                                strategy */
+   struct Options zopfli_options PNG_DEPSTRUCT; /* Zopfli options */
+   unsigned char *zopfli_buf PNG_DEPSTRUCT;     /* Zopfli source buffer */
+   size_t zopfli_len PNG_DEPSTRUCT;             /* Zopfli source buffer length */
 
    png_uint_32 width PNG_DEPSTRUCT;         /* width of image in pixels */
    png_uint_32 height PNG_DEPSTRUCT;        /* height of image in pixels */
