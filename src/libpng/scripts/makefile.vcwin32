@@ -15,9 +15,9 @@
 CC = cl
 LD = link
 AR = lib
-CFLAGS  = -nologo -D_CRT_SECURE_NO_DEPRECATE -MD -O2 -W3 -I..\zlib -I..\zopfli
+CFLAGS  = -nologo -D_CRT_SECURE_NO_DEPRECATE -MT -GL -O2 -W3 -I..\zlib -I..\zopfli
 LDFLAGS = -nologo
-ARFLAGS = -nologo
+ARFLAGS = -nologo -ltcg
 RM = del
 
 # File extensions

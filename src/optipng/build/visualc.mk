@@ -5,11 +5,11 @@
 # Usage: nmake -f build\visualc.mk
 
 CC = cl -nologo
-CFLAGS = -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -MD -O2 -W4
+CFLAGS = -D_CRT_SECURE_NO_DEPRECATE -D_CRT_NONSTDC_NO_DEPRECATE -MT -GL -O2 -W4
 CPP = cl -nologo -E
 CPPFLAGS =
 LD = link -nologo
-LDFLAGS =
+LDFLAGS = -ltcg
 DIFF = fc
 RM_F = del /q
 
