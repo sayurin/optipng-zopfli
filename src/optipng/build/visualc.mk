@@ -33,6 +33,9 @@ LIBPNG_MK = scripts\makefile.vcwin32
 ZLIB_DIR = ..\zlib
 ZLIB_LIB = zlib.lib
 ZLIB_MK = win32\Makefile.msc
+ZOPFLI_DIR = ..\zopfli
+ZOPFLI_LIB = libzopfli.lib
+ZOPFLI_MK = makefile
 GIF_DIR = ..\gifread
 GIF_LIB = gifread.lib
 GIF_MK = build\visualc.mk
@@ -51,21 +54,25 @@ OPTIPNG_OBJS = \
   wildargs.obj
 
 OPTIPNG_DEPLIB_ZLIB = $(ZLIB_DIR)\$(ZLIB_LIB)
+OPTIPNG_DEPLIB_ZOPFLI = $(ZOPFLI_DIR)\$(ZOPFLI_LIB)
 OPTIPNG_DEPLIB_LIBPNG = $(LIBPNG_DIR)\$(LIBPNG_LIB)
 OPTIPNG_DEPLIBS = \
   $(OPNGREDUC_DIR)\$(OPNGREDUC_LIB) \
   $(PNGXTERN_DIR)\$(PNGXTERN_LIB) \
   $(OPTIPNG_DEPLIB_LIBPNG) \
   $(OPTIPNG_DEPLIB_ZLIB) \
+  $(OPTIPNG_DEPLIB_ZOPFLI) \
   $(GIF_DIR)\$(GIF_LIB) \
   $(PNM_DIR)\$(PNM_LIB) \
   $(TIFF_DIR)\$(TIFF_LIB)
 
 OPTIPNG_DEPINCLUDE_ZLIB = -I$(ZLIB_DIR)
+OPTIPNG_DEPINCLUDE_ZOPFLI = -I$(ZOPFLI_DIR)
 OPTIPNG_DEPINCLUDE_LIBPNG = -I$(LIBPNG_DIR)
 OPTIPNG_DEPINCLUDES = \
   -I$(CEXCEPT_DIR) \
   $(OPTIPNG_DEPINCLUDE_ZLIB) \
+  $(OPTIPNG_DEPINCLUDE_ZOPFLI) \
   $(OPTIPNG_DEPINCLUDE_LIBPNG) \
   -I$(OPNGREDUC_DIR) \
   -I$(PNGXTERN_DIR)
@@ -108,7 +115,8 @@ $(PNGXTERN_DIR)\$(PNGXTERN_LIB): \
 	cd $(OPTIPNG_DIR)
 
 $(LIBPNG_DIR)\$(LIBPNG_LIB): \
-  $(OPTIPNG_DEPLIB_ZLIB)
+  $(OPTIPNG_DEPLIB_ZLIB) \
+  $(OPTIPNG_DEPLIB_ZOPFLI)
 	cd $(LIBPNG_DIR)
 	$(MAKE) -f $(LIBPNG_MK) $(LIBPNG_LIB)
 	cd $(OPTIPNG_DIR)
@@ -116,6 +124,11 @@ $(LIBPNG_DIR)\$(LIBPNG_LIB): \
 $(ZLIB_DIR)\$(ZLIB_LIB):
 	cd $(ZLIB_DIR)
 	$(MAKE) -f $(ZLIB_MK) $(ZLIB_LIB)
+	cd $(OPTIPNG_DIR)
+
+$(ZOPFLI_DIR)\$(ZOPFLI_LIB):
+	cd $(ZOPFLI_DIR)
+	$(MAKE) -f $(ZOPFLI_MK) $(ZOPFLI_LIB)
 	cd $(OPTIPNG_DIR)
 
 $(GIF_DIR)\$(GIF_LIB):
@@ -196,7 +209,8 @@ clean: \
   clean-opngreduc \
   clean-pngxtern-gif-pnm-tiff \
   clean-libpng \
-  clean-zlib
+  clean-zlib \
+  clean-zopfli
 
 clean-opngreduc:
 	cd $(OPNGREDUC_DIR)
@@ -227,12 +241,18 @@ clean-zlib:
 	$(MAKE) -f $(ZLIB_MK) clean
 	cd $(OPTIPNG_DIR)
 
+clean-zopfli:
+	cd $(ZOPFLI_DIR)
+	$(MAKE) -f $(ZOPFLI_MK) clean
+	cd $(OPTIPNG_DIR)
+
 distclean: \
   local-clean \
   distclean-opngreduc \
   distclean-pngxtern-gif-pnm-tiff \
   distclean-libpng \
-  distclean-zlib
+  distclean-zlib \
+  distclean-zopfli
 	-$(RM_F) Makefile man\Makefile
 
 distclean-opngreduc:
@@ -262,6 +282,11 @@ distclean-libpng:
 distclean-zlib:
 	cd $(ZLIB_DIR)
 	$(MAKE) -f $(ZLIB_MK) distclean
+	cd $(OPTIPNG_DIR)
+
+distclean-zopfli:
+	cd $(ZOPFLI_DIR)
+	$(MAKE) -f $(ZOPFLI_MK) distclean
 	cd $(OPTIPNG_DIR)
 
 local-clean:
