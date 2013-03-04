@@ -83,10 +83,7 @@ static const char *msg_help_options =
     "Optimization options:\n"
     "    -f <filters>\tPNG delta filters (0-5)\t\t\t[default: 0,5]\n"
     "    -i <type>\t\tPNG interlace type (0-1)\n"
-    "    -zc <levels>\tzlib compression levels (1-9)\t\t[default: 9]\n"
-    "    -zm <levels>\tzlib memory levels (1-9)\t\t[default: 8]\n"
-    "    -zs <strategies>\tzlib compression strategies (0-3)\t[default: 0-3]\n"
-    "    -zw <size>\t\tzlib window size (256,512,1k,2k,4k,8k,16k,32k)\n"
+    "    -zc <levels>\tzopfli itelation count (1-)\t\t[default: 10]\n"
     "    -full\t\tproduce a full report on IDAT (might reduce speed)\n"
     "    -nb\t\t\tno bit depth reduction\n"
     "    -nc\t\t\tno color type reduction\n"
@@ -97,19 +94,18 @@ static const char *msg_help_options =
     "    -snip\t\tcut one image out of multi-image or animation files\n"
     "    -strip <objects>\tstrip metadata objects (e.g. \"all\")\n"
     "Optimization levels:\n"
-    "    -o0\t\t<=>\t-o1 -nx -nz\t\t\t\t(0 or 1 trials)\n"
-    "    -o1\t\t<=>\t-zc9 -zm8 -zs0 -f0\t\t\t(1 trial)\n"
-    "    \t\t(or...)\t-zc9 -zm8 -zs1 -f5\t\t\t(1 trial)\n"
-    "    -o2\t\t<=>\t-zc9 -zm8 -zs0-3 -f0,5\t\t\t(8 trials)\n"
-    "    -o3\t\t<=>\t-zc9 -zm8-9 -zs0-3 -f0,5\t\t(16 trials)\n"
-    "    -o4\t\t<=>\t-zc9 -zm8 -zs0-3 -f0-5\t\t\t(24 trials)\n"
-    "    -o5\t\t<=>\t-zc9 -zm8-9 -zs0-3 -f0-5\t\t(48 trials)\n"
-    "    -o6\t\t<=>\t-zc1-9 -zm8 -zs0-3 -f0-5\t\t(120 trials)\n"
-    "    -o7\t\t<=>\t-zc1-9 -zm8-9 -zs0-3 -f0-5\t\t(240 trials)\n"
-    "    -o7 -zm1-9\t<=>\t-zc1-9 -zm1-9 -zs0-3 -f0-5\t\t(1080 trials)\n"
+    "    -o0\t\t<=>\t-o1 -nx -nz\t\t(0 or 5 trials)\n"
+    "    -o1\t\t<=>\t-zc5 -f0\t\t(5 trial)\n"
+    "    \t\t(or...)\t-zc5 -f5\t\t(5 trial)\n"
+    "    -o2\t\t<=>\t-zc5 -f0,5\t\t(10 trials)\n"
+    "    -o3\t\t<=>\t-zc10 -f0,5\t\t(20 trials)\n"
+    "    -o4\t\t<=>\t-zc5 -f0-5\t\t(30 trials)\n"
+    "    -o5\t\t<=>\t-zc10 -f0-5\t\t(60 trials)\n"
+    "    -o6\t\t<=>\t-zc15 -f0-5\t\t(90 trials)\n"
+    "    -o7\t\t<=>\t-zc30 -f0-5\t\t(180 trials)\n"
+    "    -o7 -zc100\t<=>\t-zc100 -f0-5\t\t(600 trials)\n"
     "Notes:\n"
-    "    The combination for -o1 is chosen heuristically.\n"
-    "    Exhaustive combinations such as \"-o7 -zm1-9\" are not generally recommended.\n";
+    "    The combination for -o1 is chosen heuristically.\n";
 
 static const char *msg_help_examples =
     "Examples:\n"
@@ -505,6 +501,7 @@ parse_args(int argc, char *argv[])
     /* Initialize. */
     memset(&options, 0, sizeof(options));
     options.optim_level = -1;
+    options.compr_level = -1;
     options.interlace = -1;
     file_count = 0;
 
@@ -694,30 +691,21 @@ parse_args(int argc, char *argv[])
         }
         else if (strcmp("zc", opt) == 0)
         {
-            /* -zc SET */
-            set = check_rangeset_option("-zc", xopt, OPNG_COMPR_LEVEL_SET_MASK);
-            options.compr_level_set |= set;
+            /* -zc NUM */
+            val = check_num_option("-zc", xopt, 0, INT_MAX);
+            options.compr_level = val;
         }
         else if (strcmp("zm", opt) == 0)
         {
-            /* -zm SET */
-            set = check_rangeset_option("-zm", xopt, OPNG_MEM_LEVEL_SET_MASK);
-            options.mem_level_set |= set;
+            /* -zm SET: ignored */
         }
         else if (strcmp("zs", opt) == 0)
         {
-            /* -zs SET */
-            set = check_rangeset_option("-zs", xopt, OPNG_STRATEGY_SET_MASK);
-            options.strategy_set |= set;
+            /* -zs SET: ignored */
         }
         else if (strcmp("zw", opt) == 0)
         {
-            /* -zw NUM */
-            val = check_power2_option("-zw", xopt, 8, 15);
-            if (options.window_bits == 0)
-                options.window_bits = val;
-            else if (options.window_bits != val)
-                error("Multiple window sizes are not permitted");
+            /* -zw NUM: ignored */
         }
         else if (strncmp("strip", opt, opt_len) == 0 && opt_len >= 2)
         {

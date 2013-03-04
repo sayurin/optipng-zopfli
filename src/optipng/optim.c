@@ -37,12 +37,8 @@ struct exception_context the_exception_context[1];
 /*
  * Optimization tables and presets
  */
-static const char *compr_level_presets[OPNG_OPTIM_LEVEL_MAX + 1] =
-    { "", "", "9", "9", "9", "9", "1-9", "1-9" };
-static const char *mem_level_presets[OPNG_OPTIM_LEVEL_MAX + 1] =
-    { "", "", "8", "8-9", "8", "8-9", "8", "8-9" };
-static const char *strategy_presets[OPNG_OPTIM_LEVEL_MAX + 1] =
-    { "", "", "0-", "0-", "0-", "0-", "0-", "0-" };
+static int compr_level_presets[OPNG_OPTIM_LEVEL_MAX + 1] =
+    { 5,  5,  5,     10,    5,    10,   15,   30 };
 static const char *filter_presets[OPNG_OPTIM_LEVEL_MAX + 1] =
     { "", "", "0,5", "0,5", "0-", "0-", "0-", "0-" };
 static const int filter_table[OPNG_FILTER_MAX + 1] =
@@ -111,8 +107,9 @@ static struct opng_process_struct
     osys_fsize_t best_idat_size, max_idat_size;
     png_uint_32 in_plte_trns_size, out_plte_trns_size;
     png_uint_32 reductions;
-    bitset_t compr_level_set, mem_level_set, strategy_set, filter_set;
-    int best_compr_level, best_mem_level, best_strategy, best_filter;
+    int compr_level;
+    bitset_t filter_set;
+    int best_filter;
 } process;
 
 /*
@@ -1106,18 +1103,11 @@ opng_read_file(FILE *infile)
  */
 static void
 opng_write_file(FILE *outfile,
-                int compression_level, int memory_level,
-                int compression_strategy, int filter)
+                int compression_level, int filter)
 {
     const char * volatile err_msg;  /* volatile is required by cexcept */
 
     OPNG_ENSURE(
-        compression_level >= OPNG_COMPR_LEVEL_MIN &&
-        compression_level <= OPNG_COMPR_LEVEL_MAX &&
-        memory_level >= OPNG_MEM_LEVEL_MIN &&
-        memory_level <= OPNG_MEM_LEVEL_MAX &&
-        compression_strategy >= OPNG_STRATEGY_MIN &&
-        compression_strategy <= OPNG_STRATEGY_MAX &&
         filter >= OPNG_FILTER_MIN &&
         filter <= OPNG_FILTER_MAX,
         "Invalid encoding parameters");
@@ -1131,24 +1121,7 @@ opng_write_file(FILE *outfile,
             Throw "Out of memory";
 
         png_set_compression_level(write_ptr, compression_level);
-        png_set_compression_mem_level(write_ptr, memory_level);
-        png_set_compression_strategy(write_ptr, compression_strategy);
         png_set_filter(write_ptr, PNG_FILTER_TYPE_BASE, filter_table[filter]);
-        if (compression_strategy != Z_HUFFMAN_ONLY &&
-            compression_strategy != Z_RLE)
-        {
-            if (options.window_bits > 0)
-                png_set_compression_window_bits(write_ptr,
-                                                options.window_bits);
-        }
-        else
-        {
-#ifdef WBITS_8_OK
-            png_set_compression_window_bits(write_ptr, 8);
-#else
-            png_set_compression_window_bits(write_ptr, 9);
-#endif
-        }
         png_set_keep_unknown_chunks(write_ptr,
                                     PNG_HANDLE_CHUNK_ALWAYS, NULL, 0);
         opng_store_image_info(write_ptr, write_info_ptr, (outfile != NULL));
@@ -1264,9 +1237,8 @@ opng_init_iteration(bitset_t cmdline_set, bitset_t mask_set,
 static void
 opng_init_iterations(void)
 {
-    bitset_t compr_level_set, mem_level_set, strategy_set, filter_set;
-    int preset_index;
-    int t1, t2;
+    bitset_t filter_set;
+    int preset_index, compr_level;
 
     /* Set the IDAT size limit. The trials that pass this limit will be
      * abandoned, as there will be no need to wait until their completion.
@@ -1300,45 +1272,28 @@ opng_init_iterations(void)
     /* Initialize the iteration sets.
      * Combine the user-defined values with the optimization presets.
      */
-    opng_init_iteration(options.compr_level_set, OPNG_COMPR_LEVEL_SET_MASK,
-        compr_level_presets[preset_index], &compr_level_set);
-    opng_init_iteration(options.mem_level_set, OPNG_MEM_LEVEL_SET_MASK,
-        mem_level_presets[preset_index], &mem_level_set);
-    opng_init_iteration(options.strategy_set, OPNG_STRATEGY_SET_MASK,
-        strategy_presets[preset_index], &strategy_set);
+    compr_level = options.compr_level;
+    if (compr_level < 0)
+        compr_level = compr_level_presets[preset_index];
     opng_init_iteration(options.filter_set, OPNG_FILTER_SET_MASK,
         filter_presets[preset_index], &filter_set);
 
     /* Replace the empty sets with the libpng's "best guess" heuristics. */
-    if (compr_level_set == BITSET_EMPTY)
-        bitset_set(&compr_level_set, Z_BEST_COMPRESSION);  /* -zc9 */
-    if (mem_level_set == BITSET_EMPTY)
-        bitset_set(&mem_level_set, 8);
     if (image.bit_depth < 8 || image.palette != NULL)
     {
-        if (strategy_set == BITSET_EMPTY)
-            bitset_set(&strategy_set, Z_DEFAULT_STRATEGY);  /* -zs0 */
         if (filter_set == BITSET_EMPTY)
             bitset_set(&filter_set, 0);  /* -f0 */
     }
     else
     {
-        if (strategy_set == BITSET_EMPTY)
-            bitset_set(&strategy_set, Z_FILTERED);  /* -zs1 */
         if (filter_set == BITSET_EMPTY)
             bitset_set(&filter_set, 5);  /* -f0 */
     }
 
     /* Store the results into process. */
-    process.compr_level_set = compr_level_set;
-    process.mem_level_set   = mem_level_set;
-    process.strategy_set    = strategy_set;
+    process.compr_level     = compr_level;
     process.filter_set      = filter_set;
-    t1 = bitset_count(compr_level_set) *
-         bitset_count(strategy_set & ~((1 << Z_HUFFMAN_ONLY) | (1 << Z_RLE)));
-    t2 = bitset_count(strategy_set &  ((1 << Z_HUFFMAN_ONLY) | (1 << Z_RLE)));
-    process.num_iterations =
-        (t1 + t2) * bitset_count(mem_level_set) * bitset_count(filter_set);
+    process.num_iterations = compr_level * bitset_count(filter_set);
     OPNG_ENSURE(process.num_iterations > 0, "Invalid iteration parameters");
 }
 
@@ -1348,9 +1303,8 @@ opng_init_iterations(void)
 static void
 opng_iterate(void)
 {
-    bitset_t compr_level_set, mem_level_set, strategy_set, filter_set;
-    bitset_t saved_compr_level_set;
-    int compr_level, mem_level, strategy, filter;
+    bitset_t filter_set;
+    int compr_level, filter;
     int counter;
     int line_reused;
 
@@ -1362,22 +1316,14 @@ opng_iterate(void)
         * Do not waste time running it twice.
         */
        process.best_idat_size = 0;
-       process.best_compr_level = bitset_find_first(process.compr_level_set);
-       process.best_mem_level   = bitset_find_first(process.mem_level_set);
-       process.best_strategy    = bitset_find_first(process.strategy_set);
        process.best_filter      = bitset_find_first(process.filter_set);
        return;
     }
 
     /* Prepare for the big iteration. */
-    compr_level_set = process.compr_level_set;
-    mem_level_set   = process.mem_level_set;
-    strategy_set    = process.strategy_set;
+    compr_level     = process.compr_level;
     filter_set      = process.filter_set;
     process.best_idat_size   = idat_size_max + 1;
-    process.best_compr_level = -1;
-    process.best_mem_level   = -1;
-    process.best_strategy    = -1;
     process.best_filter      = -1;
 
     /* Iterate through the "hyper-rectangle" (zc, zm, zs, f). */
@@ -1389,79 +1335,34 @@ opng_iterate(void)
     {
        if (bitset_test(filter_set, filter))
        {
-          for (strategy = OPNG_STRATEGY_MIN;
-               strategy <= OPNG_STRATEGY_MAX; ++strategy)
+          usr_printf("  zc = %d  f = %d", compr_level, filter);
+          usr_progress(counter, process.num_iterations);
+          counter += compr_level;
+          opng_write_file(NULL, compr_level, filter);
+          if (process.out_idat_size > idat_size_max)
           {
-             if (bitset_test(strategy_set, strategy))
+             if (options.verbose)
              {
-                /* The compression level has no significance under
-                 * Z_HUFFMAN_ONLY or Z_RLE.
-                 */
-                saved_compr_level_set = compr_level_set;
-                if (strategy == Z_HUFFMAN_ONLY)
-                {
-                   compr_level_set = BITSET_EMPTY;
-                   bitset_set(&compr_level_set, 1);  /* use deflate_fast */
-                }
-                else if (strategy == Z_RLE)
-                {
-                   compr_level_set = BITSET_EMPTY;
-                   bitset_set(&compr_level_set, 9);  /* use deflate_slow */
-                }
-                for (compr_level = OPNG_COMPR_LEVEL_MAX;
-                     compr_level >= OPNG_COMPR_LEVEL_MIN; --compr_level)
-                {
-                   if (bitset_test(compr_level_set, compr_level))
-                   {
-                      for (mem_level = OPNG_MEM_LEVEL_MAX;
-                           mem_level >= OPNG_MEM_LEVEL_MIN; --mem_level)
-                      {
-                         if (bitset_test(mem_level_set, mem_level))
-                         {
-                            usr_printf(
-                               "  zc = %d  zm = %d  zs = %d  f = %d",
-                               compr_level, mem_level, strategy, filter);
-                            usr_progress(counter, process.num_iterations);
-                            ++counter;
-                            opng_write_file(NULL,
-                               compr_level, mem_level, strategy, filter);
-                            if (process.out_idat_size > idat_size_max)
-                            {
-                               if (options.verbose)
-                               {
-                                  usr_printf("\t\tIDAT too big\n");
-                                  line_reused = 0;
-                               }
-                               else
-                               {
-                                  usr_print_cntrl('\r');  /* CR: reset line */
-                                  line_reused = 1;
-                               }
-                               continue;
-                            }
-                            usr_printf("\t\tIDAT size = %" OSYS_FSIZE_PRIu
-                                       "\n",
-                                       process.out_idat_size);
-                            line_reused = 0;
-                            if (process.best_idat_size < process.out_idat_size)
-                               continue;
-                            if (process.best_idat_size == process.out_idat_size
-                                && process.best_strategy >= Z_HUFFMAN_ONLY)
-                               continue;  /* it's neither smaller nor faster */
-                            process.best_compr_level = compr_level;
-                            process.best_mem_level   = mem_level;
-                            process.best_strategy    = strategy;
-                            process.best_filter      = filter;
-                            process.best_idat_size   = process.out_idat_size;
-                            if (!options.full)
-                               process.max_idat_size = process.out_idat_size;
-                         }
-                      }
-                   }
-                }
-                compr_level_set = saved_compr_level_set;
+                usr_printf("\t\tIDAT too big\n");
+                line_reused = 0;
              }
+             else
+             {
+                usr_print_cntrl('\r');  /* CR: reset line */
+                line_reused = 1;
+             }
+             continue;
           }
+          usr_printf("\t\tIDAT size = %" OSYS_FSIZE_PRIu
+                     "\n",
+                     process.out_idat_size);
+          line_reused = 0;
+          if (process.best_idat_size < process.out_idat_size)
+             continue;
+          process.best_filter      = filter;
+          process.best_idat_size   = process.out_idat_size;
+          if (!options.full)
+             process.max_idat_size = process.out_idat_size;
        }
     }
     if (line_reused)
@@ -1486,9 +1387,8 @@ opng_finish_iterations(void)
         if (process.best_idat_size <= idat_size_max)
         {
             usr_printf("\nSelecting parameters:\n");
-            usr_printf("  zc = %d  zm = %d  zs = %d  f = %d",
-                       process.best_compr_level, process.best_mem_level,
-                       process.best_strategy, process.best_filter);
+            usr_printf("  zc = %d  f = %d",
+                       process.compr_level, process.best_filter);
             if (process.best_idat_size > 0)
             {
                 /* At least one trial has been run. */
@@ -1746,9 +1646,7 @@ opng_optimize_impl(const char *infile_name)
         if (process.status & OUTPUT_NEEDS_NEW_IDAT)
         {
             /* Write a brand new PNG datastream to the output. */
-            opng_write_file(outfile,
-                process.best_compr_level, process.best_mem_level,
-                process.best_strategy, process.best_filter);
+            opng_write_file(outfile, process.compr_level, process.best_filter);
         }
         else
         {

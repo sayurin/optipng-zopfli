@@ -43,11 +43,8 @@ struct opng_options
     int interlace;
     int nb, nc, np, nz;
     int optim_level;
-    bitset_t compr_level_set;
-    bitset_t mem_level_set;
-    bitset_t strategy_set;
+    int compr_level;
     bitset_t filter_set;
-    int window_bits;
 
     /* editing options */
     int snip;
@@ -90,18 +87,6 @@ int opng_finalize(void);
 #define OPNG_OPTIM_LEVEL_DEFAULT    2
 #define OPNG_OPTIM_LEVEL_MIN        0
 #define OPNG_OPTIM_LEVEL_MAX        7
-
-#define OPNG_COMPR_LEVEL_MIN        1
-#define OPNG_COMPR_LEVEL_MAX        9
-#define OPNG_COMPR_LEVEL_SET_MASK   ((1 << (9+1)) - (1 << 1))  /* 0x03fe */
-
-#define OPNG_MEM_LEVEL_MIN          1
-#define OPNG_MEM_LEVEL_MAX          9
-#define OPNG_MEM_LEVEL_SET_MASK     ((1 << (9+1)) - (1 << 1))  /* 0x03fe */
-
-#define OPNG_STRATEGY_MIN           0
-#define OPNG_STRATEGY_MAX           3
-#define OPNG_STRATEGY_SET_MASK      ((1 << (3+1)) - (1 << 0))  /* 0x000f */
 
 #define OPNG_FILTER_MIN             0
 #define OPNG_FILTER_MAX             5
