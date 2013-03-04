@@ -660,16 +660,19 @@ static void DeflatePart(const Options* options, int btype, int final,
 void Deflate(const Options* options, int btype, int final,
              const unsigned char* in, size_t insize,
              unsigned char* bp, unsigned char** out, size_t* outsize) {
+  ResetSeed();
 #if MASTER_BLOCK_SIZE == 0
   DeflatePart(options, btype, final, in, 0, insize, bp, out, outsize);
 #else
-  size_t i = 0;
-  while (i < insize) {
-    int masterfinal = (i + MASTER_BLOCK_SIZE >= insize);
-    int final2 = final && masterfinal;
-    size_t size = masterfinal ? insize - i : MASTER_BLOCK_SIZE;
-    DeflatePart(options, btype, final2, in, i, i + size, bp, out, outsize);
-    i += size;
+  {
+    size_t i = 0;
+    while (i < insize) {
+      int masterfinal = (i + MASTER_BLOCK_SIZE >= insize);
+      int final2 = final && masterfinal;
+      size_t size = masterfinal ? insize - i : MASTER_BLOCK_SIZE;
+      DeflatePart(options, btype, final2, in, i, i + size, bp, out, outsize);
+      i += size;
+    }
   }
 #endif
 }

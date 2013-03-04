@@ -56,4 +56,6 @@ void LZ77OptimalFixed(BlockState *s,
                       const unsigned char* in, size_t instart, size_t inend,
                       LZ77Store* store);
 
+void ResetSeed();
+
 #endif  /* ZOPFLI_SQUEEZE_H_ */

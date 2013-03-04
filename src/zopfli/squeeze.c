@@ -73,12 +73,18 @@ static void AddWeighedStatFreqs(const SymbolStats* stats1, double w1,
 }
 
 /* Get random number: "Multiply-With-Carry" generator of G. Marsaglia */
+static unsigned int m_w = 1;
+static unsigned int m_z = 2;
+
 static unsigned int Ran() {
-  static unsigned int m_w = 1;
-  static unsigned int m_z = 2;
   m_z = 36969 * (m_z & 65535) + (m_z >> 16);
   m_w = 18000 * (m_w & 65535) + (m_w >> 16);
   return (m_z << 16) + m_w;  /* 32-bit result. */
+}
+
+void ResetSeed(){
+  m_w = 1;
+  m_z = 2;
 }
 
 static void RandomizeFreqs(size_t* freqs, int n) {
